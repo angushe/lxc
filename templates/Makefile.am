@@ -11,4 +11,5 @@ templates_SCRIPTS = \
 	lxc-altlinux \
 	lxc-busybox \
 	lxc-sshd \
-	lxc-archlinux
+	lxc-archlinux \
+	lxc-centos

@@ -35,6 +35,7 @@ templates/lxc-oracle
 templates/lxc-sshd
 templates/lxc-ubuntu
 templates/lxc-ubuntu-cloud
+templates/lxc-centos
 
 
 src/lxc/lxc-attach

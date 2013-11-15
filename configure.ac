@@ -13,12 +13,13 @@ AC_GNU_SOURCE
 AC_CHECK_PROG(SETCAP, setcap, yes, no, $PATH$PATH_SEPARATOR/sbin)
 
 AC_MSG_CHECKING([host distribution])
-AC_ARG_WITH(distro, AS_HELP_STRING([--with-distro=DISTRO], [Specify the Linux distribution to target: One of redhat, oracle, fedora, suse, gentoo, debian, arch, slackware, paldo, mandriva or pardus]))
+AC_ARG_WITH(distro, AS_HELP_STRING([--with-distro=DISTRO], [Specify the Linux distribution to target: One of redhat, centos, oracle, fedora, suse, gentoo, debian, arch, slackware, paldo, mandriva or pardus]))
 if test "z$with_distro" = "z"; then
 	with_distro=`lsb_release -is`
 fi
 if test "z$with_distro" = "z"; then
 	AC_CHECK_FILE(/etc/redhat-release,with_distro="redhat")
+	AC_CHECK_FILE(/etc/redhat-release,with_distro="centos")
 	AC_CHECK_FILE(/etc/oracle-release,with_distro="oracle")
 	AC_CHECK_FILE(/etc/fedora-release,with_distro="fedora")
 	AC_CHECK_FILE(/etc/SuSE-release,with_distro="suse")
@@ -40,7 +41,7 @@ case $with_distro in
 	ubuntu)
 		conffile=lxc.conf.ubuntu
 		;;
-	redhat|fedora|oracle|oracleserver)
+	redhat|centos|fedora|oracle|oracleserver)
 		conffile=lxc.conf.libvirt
 		;;
 	*)
@@ -253,6 +254,7 @@ AC_CONFIG_FILES([
 	templates/lxc-altlinux
 	templates/lxc-sshd
 	templates/lxc-archlinux
+	templates/lxc-centos
 
 	src/Makefile
 	src/lxc/Makefile
