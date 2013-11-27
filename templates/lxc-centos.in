@@ -62,7 +62,7 @@ TYPE=Ethernet
 # PEERDNS=yes
 IPV6INIT=no
 PV6_AUTOCONF=no
-DHCP_HOSTNAME="$(if [ -x /etc/hostname ] && [ ! -z `cat /etc/hostname` ] ; then cat /etc/hostname ; else hostname ; fi )"
+DHCP_HOSTNAME=${name}
 EOF
 
     # configure the network to use dhcp. we set DHCP_HOSTNAME so the guest
