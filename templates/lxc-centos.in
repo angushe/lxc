@@ -442,7 +442,7 @@ fi
 
 
 rootfs_path=$path/rootfs
-config_path=$default_path/$name
+config_path=$path
 cache=$cache_base/$release
 
 revert()
@@ -451,7 +451,6 @@ revert()
     lxc-destroy -n $name
 # maybe was interrupted before copy config
     rm -rf $path/$name
-    rm -rf $default_path/$name
     echo "exiting..."
     exit 1
 }
