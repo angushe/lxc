@@ -172,44 +172,82 @@ download_centos()
     PKG_LIST="yum initscripts passwd rsyslog vim-minimal dhclient chkconfig"
     PKG_LIST="$PKG_LIST rootfiles policycoreutils centos-release openssh-server avahi"
     PKG_LIST="$PKG_LIST openssh-clients sudo plymouth"
-    MIRRORLIST_URL="http://mirrorlist.centos.org/?release=$release&arch=$arch&repo=os"
-    
-    DOWNLOAD_OK=no
-    for trynumber in 1 2 3; do
-        [ $trynumber != 1 ] && echo "Trying again..."
-        MIRROR_URL=$(curl -s -S -f "$MIRRORLIST_URL" | head -n2 | tail -n1)
-        if [ $? -ne 0 ] || [ -z "$MIRROR_URL" ]; then
-            echo "Failed to get a mirror"
-            continue
-        fi
 
-        RELEASE_PACKAGE=$(curl "$MIRROR_URL/Packages/" 2>/dev/null | grep 'centos-release' | sed -e 's/.*<a href="\(.*\)">.*<.*/\1/')
-        RELEASE_URL="$MIRROR_URL/Packages/${RELEASE_PACKAGE}"
-        echo "Fetching from $RELEASE_URL"
-        curl -f "$RELEASE_URL" > $INSTALL_ROOT/${RELEASE_PACKAGE}
-        if [ $? -ne 0 ]; then
-            echo "Failed to download centos release rpm"
-            continue
-        fi
-        DOWNLOAD_OK=yes
-        break
-    done
-    if [ $DOWNLOAD_OK != yes ]; then
-        echo "Aborting"
-        return 1
+    # use temporary repository definition
+    REPO_FILE=$INSTALL_ROOT/etc/yum.repos.d/lxc-centos-temp.repo
+    mkdir -p $(dirname $REPO_FILE)
+    if [ -n "$repo" ]; then
+cat <<EOF > $REPO_FILE
+[base]
+name=local repository
+baseurl="$repo"
+EOF
+else
+cat <<EOF > $REPO_FILE
+[base]
+name=CentOS-$release - Base
+mirrorlist=http://mirrorlist.centos.org/?release=$release&arch=$arch&repo=os
+
+[updates]
+name=CentOS-$release - Updates
+mirrorlist=http://mirrorlist.centos.org/?release=$release&arch=$arch&repo=updates
+EOF
     fi
-    
-    mkdir -p $INSTALL_ROOT/var/lib/rpm
-    rpm --root $INSTALL_ROOT --initdb
-    rpm --root $INSTALL_ROOT -ivh $INSTALL_ROOT/${RELEASE_PACKAGE}
+
+    # # create minimal device nodes, needed for "yum install" and "yum update" process
+    # mkdir -p $INSTALL_ROOT/dev
+    # force_mknod 666 $INSTALL_ROOT/dev/null c 1 3
+    # force_mknod 666 $INSTALL_ROOT/dev/urandom c 1 9
+
     $YUM install $PKG_LIST
-    chroot $INSTALL_ROOT rm -f /var/lib/rpm/__*
-    chroot $INSTALL_ROOT rpm --rebuilddb
     
     if [ $? -ne 0 ]; then
         echo "Failed to download the rootfs, aborting."
         return 1
     fi
+
+    # use same nameservers as hosts, needed for "yum update later"
+    cp /etc/resolv.conf $INSTALL_ROOT/etc/
+
+    # check whether rpmdb is under $HOME
+    if [ ! -e $INSTALL_ROOT/var/lib/rpm/Packages -a -e $INSTALL_ROOT/$HOME/.rpmdb/Packages ]; then
+        echo "Fixing rpmdb location ..."
+        mv $INSTALL_ROOT/$HOME/.rpmdb/[A-Z]* $INSTALL_ROOT/var/lib/rpm/
+        rm -rf $INSTALL_ROOT/$HOME/.rpmdb
+        chroot $INSTALL_ROOT rpm --rebuilddb 2>/dev/null
+    fi
+
+    # check whether rpmdb version is correct
+    chroot $INSTALL_ROOT rpm --quiet -q yum 2>/dev/null
+    ret=$?
+
+    # if "rpm -q" doesn't work due to rpmdb version difference,
+    # then we need to redo the process using the newly-installed yum
+    if [ $ret -gt 0 ]; then
+        echo "Reinstalling packages ..."
+        mv $REPO_FILE $REPO_FILE.tmp
+        mkdir $INSTALL_ROOT/etc/yum.repos.disabled
+        mv $INSTALL_ROOT/etc/yum.repos.d/*.repo $INSTALL_ROOT/etc/yum.repos.disabled/
+        mv $REPO_FILE.tmp $REPO_FILE
+        mkdir -p $INSTALL_ROOT/$INSTALL_ROOT/etc
+        cp /etc/resolv.conf $INSTALL_ROOT/$INSTALL_ROOT/etc/
+        mkdir -p $INSTALL_ROOT/$INSTALL_ROOT/dev
+        mknod -m 666 $INSTALL_ROOT/$INSTALL_ROOT/dev/null c 1 3
+        mknod -m 666 $INSTALL_ROOT/$INSTALL_ROOT/dev/urandom c 1 9
+        mkdir -p $INSTALL_ROOT/$INSTALL_ROOT/var/cache/yum
+        cp -al $INSTALL_ROOT/var/cache/yum/* $INSTALL_ROOT/$INSTALL_ROOT/var/cache/yum/
+        chroot $INSTALL_ROOT $YUM install $PKG_LIST
+        if [ $? -ne 0 ]; then
+            echo "Failed to download the rootfs, aborting."
+            return 1
+        fi
+        mv $INSTALL_ROOT/$INSTALL_ROOT $INSTALL_ROOT.tmp
+        rm -rf $INSTALL_ROOT
+        mv $INSTALL_ROOT.tmp $INSTALL_ROOT
+    fi
+
+    rm -f $REPO_FILE
+    rm -rf $INSTALL_ROOT/var/cache/yum/*
     
     mv "$INSTALL_ROOT" "$cache/rootfs"
     echo "Download complete."
@@ -370,9 +408,10 @@ usage()
     -p,--path path to where the container rootfs will be created, defaults to $default_path. The container config will go under $default_path in that case
     -c,--clean clean the cache
     -R,--release Centos release for the new container. if the host is Fedora, then it will defaultto the host's release.
--m,--release-minor Minor release number for the new containar
--A,--arch NOT USED YET. Define what arch the container will be [i686,x86_64]
--h,--help print this help
+    -m,--release-minor Minor release number for the new containar
+    --repo         repository to use (url)
+    -A,--arch NOT USED YET. Define what arch the container will be [i686,x86_64]
+    -h,--help print this help
 EOF
 return 0
 }
@@ -393,6 +432,7 @@ do
         -c|--clean) clean=$2; shift 2;;
         -R|--release) release=$2; shift 2;;
         -m|--releaseminor) releaseminor=$2; shift 2;;
+        --repo)	repo="$2"; shift 2;;
         --) shift 1; break ;;
         *) break ;;
     esac
